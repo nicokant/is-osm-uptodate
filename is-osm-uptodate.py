@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-__version__ = "1.4.99"
+__version__ = "1.5"
 
 import hug
 import requests
@@ -86,7 +86,7 @@ start, end = None, None
 # TODO: ERROR HANDLING
 #'{\n  "timestamp" : "2021-07-03T12:13:20.122893",\n  "status" : 400,\n  "message" : "The provided time parameter is not ISO-8601 conform.",\n  "requestUrl" : "https://api.ohsome.org/v1/elementsFullHistory/geometry?bboxes=9.188295196%2C45.4635324507%2C9.1926242813%2C45.4649771956&properties=metadata&showMetadata=true&time=None%2CNone&types=node"\n}'
 
-@hug.cli()
+@hug.cli(output=hug.output_format.json)
 @hug.get('/api/getData')
 def getData(
         minx: hug.types.float_number,
