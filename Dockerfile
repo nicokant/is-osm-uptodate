@@ -11,7 +11,7 @@ RUN cd web && \
     npm ci
 
 FROM apt AS base
-RUN apt-get -qq install uwsgi libyajl-dev && \
+RUN apt-get -qq install libyajl-dev && \
     useradd --user-group --system --no-create-home --no-log-init app && \
     chown -R app:app .
 COPY requirements.txt .
@@ -37,4 +37,4 @@ COPY web web
 EXPOSE 8000/tcp
 
 USER app
-CMD ["uwsgi", "--ini", "uwsgi.ini"]
+CMD ["python", "is-osm-uptodate.py"]

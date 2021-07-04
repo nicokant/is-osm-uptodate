@@ -3,14 +3,14 @@ import signal
 import shlex
 import subprocess
 
-uwsgi_command = shlex.split('uwsgi --ini uwsgi.ini')
+app_command = shlex.split('python3 is-osm-uptodate.py')
 
 def setup_module():
-    global uwsgi
-    uwsgi = subprocess.Popen(uwsgi_command, cwd='..')
+    global app
+    app = subprocess.Popen(app_command, cwd='..')
     import time
     time.sleep(3)
 
 def teardown_module():
-    global uwsgi
-    uwsgi.send_signal(signal.SIGINT)
+    global app
+    app.send_signal(signal.SIGINT)
