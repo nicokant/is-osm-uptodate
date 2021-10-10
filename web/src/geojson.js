@@ -1,5 +1,8 @@
 import './map.css';
 
+import React from 'react';
+import ReactDOM from 'react-dom';
+
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -94,16 +97,10 @@ let modes = {
 
 let minimumValue = modes[mode].defaultValue;
 let maximumValue = modes[mode].defaultValue;
-let minimumValuePretty;
-let maximumValuePretty;
-document.getElementById("percentile").value = 50;
-let info = L.control();
-info.onAdd = map => {
-  info.div = L.DomUtil.create('div', 'info');
-  L.DomEvent.disableClickPropagation(info.div);
-  return info.div;
-};
-info.update = message => {
+
+function Info(props) {
+  let minimumValuePretty;
+  let maximumValuePretty;
   if (!modes[mode].inverted) {
     minimumValuePretty = modes[mode].prettyValue(minimumValue);
     maximumValuePretty = modes[mode].prettyValue(maximumValue);
@@ -111,25 +108,39 @@ info.update = message => {
     minimumValuePretty = modes[mode].prettyValue(maximumValue);
     maximumValuePretty = modes[mode].prettyValue(minimumValue);
   }
-  info.div.innerHTML = `
-    <div class="bar">
-      <span>${minimumValuePretty}</span>
-      <span class="colors"></span>
-      <span>${maximumValuePretty}</span>
+  return (
+    <>
+    <div className="bar">
+      <span>{minimumValuePretty}</span>
+      <span className="colors"></span>
+      <span>{maximumValuePretty}</span>
     </div>
-    <div class="slider">
+    <div className="slider">
       Background colour
-      <input type="range" id="grayscale" value="${colour}"/>
+      <input type="range" id="grayscale" defaultValue="0" onChange={setColor}/>
     </div>
-  `;
-  document.getElementById('percentile').oninput = event => {
-    percentile = parseInt(event.target.value);
-    document.getElementById('percentile-value').innerText = percentile;
-    nodes.refreshClusters();
-  }
-  document.getElementById('grayscale').addEventListener('input', setColor);
+    </>
+  );
+}
+
+let info = L.control();
+info.onAdd = map => {
+  info.div = L.DomUtil.create('div');
+  info.div.id = 'info';
+  L.DomEvent.disableClickPropagation(info.div);
+  return info.div;
+};
+info.update = message => {
+  nodes.refreshClusters();
+  ReactDOM.render(<Info />, document.getElementById('info'));
 };
 info.addTo(map);
+
+document.getElementById("percentile").value = 50;
+document.getElementById('percentile').oninput = event => {
+  percentile = parseInt(event.target.value);
+  document.getElementById('percentile-value').innerText = percentile;
+}
 
 let nodes = new MarkerClusterGroup({
     iconCreateFunction: function (cluster) {
