@@ -1,10 +1,14 @@
 import './map.css';
 
-import React from 'react';
+import React, { useState } from 'react';
 import ReactDOM from 'react-dom';
+
+var classNames = require('classnames');
 
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
 
 import { MarkerClusterGroup } from "leaflet.markercluster/src";
 import "leaflet.markercluster/dist/MarkerCluster.css";
@@ -14,27 +18,164 @@ import "leaflet-geosearch/dist/geosearch.css";
 
 import { interpolateViridis } from "d3-scale-chromatic"
 
-import { Accordion } from 'bootstrap';
 import 'bootstrap/dist/css/bootstrap.css';
 
 import '@fortawesome/fontawesome-free/css/fontawesome.css'
 import '@fortawesome/fontawesome-free/css/solid.css'
 
-let map = L.map('map');
+
+function Settings() {
+  return (
+    <div className="input-group">
+      <div className="input-group-prepend">
+        <div className="input-group-text">Filter</div>
+      </div>
+      <input id="filter" className="form-control" type="text" placeholder="example: amenity=*" />
+    </div>
+  )
+}
+
+function Actions() {
+  return (
+    <a id="download" className="btn btn-primary disabled" role="button" onClick={getData}>
+      <i className="fas fa-sync-alt" />
+      <span>Show data</span>
+      <span id="spinner" className="spinner-border spinner-border-sm d-none" role="status"></span>
+      <span className="visually-hidden">Loading...</span>
+    </a>
+  )
+}
+
+function ButtonCheckbox({id, children, mode, onChange}) {
+  let checked = id == mode;
+  return (
+    <>
+      <input type="radio" className="btn-check" name="modes" id={id} autoComplete="off" checked={checked} onChange={(e) => onChange(e.target.id) } />
+      <label className="btn btn-outline-primary" htmlFor={id}>
+        {children}
+      </label>
+    </>
+  )
+}
+
+function Mode() {
+  const [mode, setMode] = useState("lastedit");
+  return (
+    <div id="mode" className="btn-group-vertical btn-group-toggle" role="group">
+      <ButtonCheckbox id="creation" mode={mode} onChange={mode => setMode(mode)}>
+        <i className="fas fa-fast-backward" /> First edit
+      </ButtonCheckbox>
+      <ButtonCheckbox id="lastedit" mode={mode} onChange={mode => setMode(mode)}>
+        <i className="fas fa-fast-forward" /> Last edit
+      </ButtonCheckbox>
+      <ButtonCheckbox id="revisions" mode={mode} onChange={mode => setMode(mode)}>
+        <i className="fas fa-clone" /> Revisions
+      </ButtonCheckbox>
+      <ButtonCheckbox id="frequency" mode={mode} onChange={mode => setMode(mode)}>
+        <i className="fas fa-stopwatch" /> Update frequency
+      </ButtonCheckbox>
+    </div>
+  )
+}
+
+function Percentile(props) {
+  const [percentile, setPercentile] = useState(50);
+  return (
+    <>
+      <div className="input-group pt-3">
+        <span className="input-group-text">Show the</span>
+        <input type="number" className="form-control" min="1" max="100" step="1" value={percentile} onChange={(e) => setPercentile(e.target.value) } />
+        <span className="input-group-text">percentile</span>
+      </div>
+      <p className="form-text">
+        When grouping nodes, leave out the lowest {percentile}&nbsp;% and show the node after.
+      </p>
+    </>
+  )
+}
+
+function Statistics() {
+  return (
+    <table className="table table-striped">
+      <tbody>
+        <tr>
+          <th scope="row">Worst node</th>
+          <td><button className="btn btn-link p-0" id="worstnode"></button></td>
+        </tr>
+      </tbody>
+    </table>
+  )
+}
+
+function Save() {
+  return (
+    <a id="download" className="btn btn-primary disabled" role="button">
+      <i className="fas fa-arrow-alt-circle-down"></i>
+      <span>Download</span>
+    </a>
+  )
+}
+
+function AccordionItem({title, children}) {
+  const [collapse, setCollapse] = useState(false);
+  return (
+    <>
+    <h2 className="accordion-header" id="section-settings-heading">
+      <button className={classNames('accordion-button', {'collapsed': collapse})} type="button" onClick={()=> setCollapse(!collapse)}>
+         {title}
+      </button>
+    </h2>
+    <div className={classNames('accordion-collapse', 'collapse', {'show': !collapse})}>
+      <div className="accordion-body">
+        {children}
+      </div>
+    </div>
+    </>
+  )
+}
+
+function Bar() {
+  return (
+    <div id="bar" className="bg-light accordion">
+      <AccordionItem title="Settings"><Settings /></AccordionItem>
+      <AccordionItem title="Actions"><Actions /></AccordionItem>
+      <AccordionItem title="Criteria">
+        <Mode />
+        <Percentile />
+      </AccordionItem>
+      <AccordionItem title="Statistics"><Statistics /></AccordionItem>
+      <AccordionItem title="Save"><Save /></AccordionItem>
+    </div>
+  )
+}
+
+let custom_attribution = `<a href="https://wiki.openstreetmap.org/wiki/Is_OSM_up-to-date">${document.title}</a> (<a href="https://github.com/frafra/is-osm-uptodate">source code</a> | &copy; <a href="https://ohsome.org/copyrights">OpenStreetMap contributors</a>)`
+function Map() {
+  return (
+    <MapContainer id="map" center={[45.46423, 9.19073]} zoom={19}>
+      <TileLayer
+        attribution={custom_attribution} url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+       />
+    </MapContainer>
+  )
+}
+
+function App() {
+  return (
+    <>
+      <Bar />
+      <Map />
+    </>
+  );
+}
+ReactDOM.render(<App />, document.getElementById('root'));
+
+/*
 const search = new GeoSearchControl({
   provider: new OpenStreetMapProvider(),
   showMarker: false,
 });
 map.addControl(search);
-
-let custom_attribution = `<a href="https://wiki.openstreetmap.org/wiki/Is_OSM_up-to-date">${document.title}</a> (<a href="https://github.com/frafra/is-osm-uptodate">source code</a>)`;
-let OpenStreetMapLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: `${custom_attribution} | &copy; <a href="https://ohsome.org/copyrights">OpenStreetMap contributors</a>`,
-  maxZoom: 19,
-  minZoom: 1
-});
-
-OpenStreetMapLayer.addTo(map);
 
 let colour = 0;
 let style = document.createElement('style');
@@ -52,7 +193,6 @@ function setColor(event) {
   applyColor();
 }
 
-document.getElementById('fetch').onclick = getData;
 
 let mode = 'lastedit';
 let buttonModes = document.querySelectorAll('#mode input');
@@ -136,11 +276,6 @@ info.update = message => {
 };
 info.addTo(map);
 
-document.getElementById("percentile").value = 50;
-document.getElementById('percentile').oninput = event => {
-  percentile = parseInt(event.target.value);
-  document.getElementById('percentile-value').innerText = percentile;
-}
 
 let nodes = new MarkerClusterGroup({
     iconCreateFunction: function (cluster) {
@@ -149,7 +284,6 @@ let nodes = new MarkerClusterGroup({
         values.sort(function(a, b) {
           return a - b;
         });
-        let percentile = document.getElementById('percentile').value;
         let aggregated = values[Math.ceil(percentile*values.length/100)-1];
         let html = document.createElement('div');
         html.style.backgroundColor = interpolateViridis(aggregated);
@@ -206,6 +340,7 @@ function computeUrl() {
   if (filter.trim().length > 0) url += `&filter=${filter}`;
   return url;
 }
+*/
 function getData() {
   let spinner = document.getElementById('spinner');
   spinner.classList.remove("d-none");
@@ -227,7 +362,7 @@ function getData() {
     console.log(error);
   });
 };
-
+/*
 let results;
 let colormap = {};
 function parseData(data) {
@@ -261,6 +396,7 @@ function parseData(data) {
       maximumValue = value;
     }
   }
+  // what if there are no features? TODO
   let nodePrettyId;
   if (!modes[mode].inverted) {
     nodePrettyId = minimumNode.properties.id;
@@ -330,3 +466,4 @@ if (document.location.hash) {
 }
 
 getData();
+*/
