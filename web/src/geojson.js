@@ -8,7 +8,7 @@ var classNames = require('classnames');
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 
 import { MarkerClusterGroup } from "leaflet.markercluster/src";
 import "leaflet.markercluster/dist/MarkerCluster.css";
@@ -24,6 +24,13 @@ import '@fortawesome/fontawesome-free/css/fontawesome.css'
 import '@fortawesome/fontawesome-free/css/solid.css'
 
 
+const states = {
+	LOADING: "loading",
+	LOADED: "loaded",
+	ERROR: "error",
+}
+
+
 function Settings() {
   return (
     <div className="input-group">
@@ -35,22 +42,23 @@ function Settings() {
   )
 }
 
-function Actions() {
+function Actions({state, setState}) {
+  let busy = state == states.LOADING;
   return (
-    <a id="download" className="btn btn-primary disabled" role="button" onClick={getData}>
+    <a id="download" className={classNames("btn", "btn-primary", {"disabled": busy})} role="button" onClick={_ => setState(states.LOADING)}>
       <i className="fas fa-sync-alt" />
       <span>Show data</span>
-      <span id="spinner" className="spinner-border spinner-border-sm d-none" role="status"></span>
+      <span className={classNames("spinner-border", "spinner-border-sm", {"d-none": !busy})} role="status"></span>
       <span className="visually-hidden">Loading...</span>
     </a>
   )
 }
 
-function ButtonCheckbox({id, children, mode, onChange}) {
+function ButtonCheckbox({id, children, mode, setMode}) {
   let checked = id == mode;
   return (
     <>
-      <input type="radio" className="btn-check" name="modes" id={id} autoComplete="off" checked={checked} onChange={(e) => onChange(e.target.id) } />
+      <input type="radio" className="btn-check" name="modes" id={id} autoComplete="off" checked={checked} onChange={(e) => setMode(e.target.id) } />
       <label className="btn btn-outline-primary" htmlFor={id}>
         {children}
       </label>
@@ -58,33 +66,31 @@ function ButtonCheckbox({id, children, mode, onChange}) {
   )
 }
 
-function Mode() {
-  const [mode, setMode] = useState("lastedit");
+function Mode({mode, setMode}) {
   return (
     <div id="mode" className="btn-group-vertical btn-group-toggle" role="group">
-      <ButtonCheckbox id="creation" mode={mode} onChange={mode => setMode(mode)}>
+      <ButtonCheckbox id="creation" mode={mode} setMode={setMode}>
         <i className="fas fa-fast-backward" /> First edit
       </ButtonCheckbox>
-      <ButtonCheckbox id="lastedit" mode={mode} onChange={mode => setMode(mode)}>
+      <ButtonCheckbox id="lastedit" mode={mode} setMode={setMode}>
         <i className="fas fa-fast-forward" /> Last edit
       </ButtonCheckbox>
-      <ButtonCheckbox id="revisions" mode={mode} onChange={mode => setMode(mode)}>
+      <ButtonCheckbox id="revisions" mode={mode} setMode={setMode}>
         <i className="fas fa-clone" /> Revisions
       </ButtonCheckbox>
-      <ButtonCheckbox id="frequency" mode={mode} onChange={mode => setMode(mode)}>
+      <ButtonCheckbox id="frequency" mode={mode} setMode={setMode}>
         <i className="fas fa-stopwatch" /> Update frequency
       </ButtonCheckbox>
     </div>
   )
 }
 
-function Percentile(props) {
-  const [percentile, setPercentile] = useState(50);
+function Percentile({percentile, setPercentile}) {
   return (
     <>
       <div className="input-group pt-3">
         <span className="input-group-text">Show the</span>
-        <input type="number" className="form-control" min="1" max="100" step="1" value={percentile} onChange={(e) => setPercentile(e.target.value) } />
+        <input type="number" className="form-control" min="1" max="100" step="1" value={percentile} onChange={(e) => {setPercentile(e.target.value)} } />
         <span className="input-group-text">percentile</span>
       </div>
       <p className="form-text">
@@ -134,74 +140,25 @@ function AccordionItem({title, children}) {
   )
 }
 
-function Bar() {
+function Bar({state, setState, mode, setMode, percentile, setPercentile}) {
   return (
     <div id="bar" className="bg-light accordion">
       <AccordionItem title="Settings"><Settings /></AccordionItem>
-      <AccordionItem title="Actions"><Actions /></AccordionItem>
+      <AccordionItem title="Actions">
+        <Actions state={state} setState={setState} />
+      </AccordionItem>
       <AccordionItem title="Criteria">
-        <Mode />
-        <Percentile />
+        <Mode mode={mode} setMode={setMode} />
+        <Percentile percentile={percentile} setPercentile={setPercentile} />
       </AccordionItem>
       <AccordionItem title="Statistics"><Statistics /></AccordionItem>
-      <AccordionItem title="Save"><Save /></AccordionItem>
+      <AccordionItem title="Save">
+        <Save state={state} />
+      </AccordionItem>
     </div>
   )
 }
 
-let custom_attribution = `<a href="https://wiki.openstreetmap.org/wiki/Is_OSM_up-to-date">${document.title}</a> (<a href="https://github.com/frafra/is-osm-uptodate">source code</a> | &copy; <a href="https://ohsome.org/copyrights">OpenStreetMap contributors</a>)`
-function Map() {
-  return (
-    <MapContainer id="map" center={[45.46423, 9.19073]} zoom={19}>
-      <TileLayer
-        attribution={custom_attribution} url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
-       />
-    </MapContainer>
-  )
-}
-
-function App() {
-  return (
-    <>
-      <Bar />
-      <Map />
-    </>
-  );
-}
-ReactDOM.render(<App />, document.getElementById('root'));
-
-/*
-const search = new GeoSearchControl({
-  provider: new OpenStreetMapProvider(),
-  showMarker: false,
-});
-map.addControl(search);
-
-let colour = 0;
-let style = document.createElement('style');
-document.head.appendChild(style);
-map.whenReady(applyColor);
-function applyColor() {
-  while (style.sheet.cssRules.length) {
-    style.sheet.deleteRule(0);
-  }
-  style.sheet.insertRule(`.leaflet-tile-container { filter: grayscale(${100-colour}%); }`, 0);
-}
-
-function setColor(event) {
-  colour = event.target.value;
-  applyColor();
-}
-
-
-let mode = 'lastedit';
-let buttonModes = document.querySelectorAll('#mode input');
-for (let i=0; i<buttonModes.length; i++) {
-  buttonModes[i].onchange = event => {
-    mode = event.target.id;
-    parseData();
-  }
-};
 let modes = {
     lastedit: {
         defaultValue: new Date(),
@@ -235,10 +192,24 @@ let modes = {
     }
 };
 
-let minimumValue = modes[mode].defaultValue;
-let maximumValue = modes[mode].defaultValue;
+let colour = 0;
+let style = document.createElement('style');
+document.head.appendChild(style);
+function applyColor() {
+  while (style.sheet.cssRules.length) {
+    style.sheet.deleteRule(0);
+  }
+  style.sheet.insertRule(`.leaflet-tile-container { filter: grayscale(${100-colour}%); }`, 0);
+}
+
+function setColor(event) {
+  colour = event.target.value;
+  applyColor();
+}
 
 function Info(props) {
+  let minimumValue = modes[mode].defaultValue;
+  let maximumValue = modes[mode].defaultValue;
   let minimumValuePretty;
   let maximumValuePretty;
   if (!modes[mode].inverted) {
@@ -263,54 +234,6 @@ function Info(props) {
   );
 }
 
-let info = L.control();
-info.onAdd = map => {
-  info.div = L.DomUtil.create('div');
-  info.div.id = 'info';
-  L.DomEvent.disableClickPropagation(info.div);
-  return info.div;
-};
-info.update = message => {
-  nodes.refreshClusters();
-  ReactDOM.render(<Info />, document.getElementById('info'));
-};
-info.addTo(map);
-
-
-let nodes = new MarkerClusterGroup({
-    iconCreateFunction: function (cluster) {
-        var markers = cluster.getAllChildMarkers();
-        let values = markers.map(marker => colormap[marker.options.fillColor]);
-        values.sort(function(a, b) {
-          return a - b;
-        });
-        let aggregated = values[Math.ceil(percentile*values.length/100)-1];
-        let html = document.createElement('div');
-        html.style.backgroundColor = interpolateViridis(aggregated);
-        let content = document.createElement('span');
-        content.innerText = markers.length;
-        html.appendChild(content);
-        return L.divIcon({ html: html, className: "mycluster" });
-    },
-    spiderfyOnMaxZoom: false,
-    disableClusteringAtZoom: 19,
-});
-let rectangle = L.layerGroup();
-
-nodes.addTo(map);
-
-let autoopen = false;
-document.getElementById('worstnode').onclick = function () {
-  nodes.addTo(map);
-  autoopen=true;
-  map.on('zoomend', function() {
-   if (autoopen) {
-     window.nodeMarker.openPopup();
-     autoopen=false;
-     }
-  });
-  map.flyTo(window.nodeMarker._latlng, OpenStreetMapLayer.options.maxZoom);
-}
 
 function generatePopup(feature) {
   let type = feature.geometry.type == 'Point' ? 'node' : 'way';
@@ -327,10 +250,8 @@ function generatePopup(feature) {
   return popup;
 }
 
-let bounds;
-function computeUrl() {
-  info.update();
-  bounds = map.getBounds();
+function computeUrl(map) {
+  let bounds = map.getBounds();
   let west = bounds.getWest();
   let south = bounds.getSouth();
   let east = bounds.getEast();
@@ -340,37 +261,12 @@ function computeUrl() {
   if (filter.trim().length > 0) url += `&filter=${filter}`;
   return url;
 }
-*/
-function getData() {
-  let spinner = document.getElementById('spinner');
-  spinner.classList.remove("d-none");
-  download.href = '#';
-  download.classList.add("disabled");
-  let url = computeUrl();
-  fetch(url).then(response => {
-    info.update();
-    let spinner = document.getElementById('spinner');
-    spinner.classList.add("d-none");
-    let download = document.getElementById('download');
-    let valid_json = response.json();
-    download.href = url;
-    download.classList.remove("disabled");
-    return valid_json;
-  }).then(parseData).catch(error => {
-    let spinner = document.getElementById('spinner');
-    spinner.classList.add("d-none");
-    console.log(error);
-  });
-};
-/*
-let results;
+
+
 let colormap = {};
-function parseData(data) {
-  results = data ? data : results;
-  nodes.clearLayers();
-  rectangle.remove();
-  minimumValue = modes[mode].defaultValue;
-  maximumValue = modes[mode].defaultValue;
+function parseData(results, mode, percentile) {
+  let minimumValue = modes[mode].defaultValue;
+  let maximumValue = modes[mode].defaultValue;
   let minimumNodeValue = modes[mode].defaultValue;
   let maximumNodeValue = modes[mode].defaultValue;
   let minimumNode;
@@ -440,13 +336,136 @@ function parseData(data) {
       return marker;
     }
   });
-  rectangle = L.rectangle(bounds, {
-    color: "#ff7800", fill: false, weight: 3
-  });
-  nodes.addLayers(markers);
-  rectangle.addTo(map);
-  info.update();
+  return markers;
 }
+
+
+
+let nodes = new MarkerClusterGroup({
+  percentile: 50,
+  iconCreateFunction: function (cluster) {
+    var markers = cluster.getAllChildMarkers();
+    let values = markers.map(marker => colormap[marker.options.fillColor]);
+    values.sort(function(a, b) {
+      return a - b;
+    });
+    let aggregated = values[Math.ceil(this.percentile*values.length/100)-1];
+    let html = document.createElement('div');
+    html.style.backgroundColor = interpolateViridis(aggregated);
+    let content = document.createElement('span');
+    content.innerText = markers.length;
+    html.appendChild(content);
+    return L.divIcon({ html: html, className: "mycluster" });
+  },
+  spiderfyOnMaxZoom: false,
+  disableClusteringAtZoom: 19,
+});
+
+function MyComponent({state, setState, mode, percentile}) {
+  const map = useMap();
+  console.log(percentile);
+  let rectangle = L.layerGroup();
+  nodes.addTo(map);
+  rectangle.addTo(map);
+
+  switch (state) {
+    case states.LOADING:
+      fetch(computeUrl(map))
+        .then(response => response.json())
+        .then(data => {
+          let markers = parseData(data, mode, percentile);
+          rectangle.remove();
+          rectangle = L.rectangle(map.getBounds(), {
+            color: "#ff7800", fill: false, weight: 3
+          });
+          nodes.clearLayers();
+          nodes.addLayers(markers);
+          setState(states.LOADED);
+        })
+        .catch(error => {
+          console.log(error);
+          setState(states.ERROR);
+      });
+      break;
+    case states.LOADED:
+      nodes.options.percentile = percentile;
+      nodes.refreshClusters();
+      break;
+  }
+  return null;
+}
+
+let custom_attribution = `<a href="https://wiki.openstreetmap.org/wiki/Is_OSM_up-to-date">${document.title}</a> (<a href="https://github.com/frafra/is-osm-uptodate">source code</a> | &copy; <a href="https://ohsome.org/copyrights">OpenStreetMap contributors</a>)`
+class Map extends React.Component {
+  constructor(props) {
+    super(props);
+  }
+  setupLegend = (map) => {
+    let info = L.control();
+    info.onAdd = map => {
+      info.div = L.DomUtil.create('div');
+      info.div.id = 'info';
+      L.DomEvent.disableClickPropagation(info.div);
+      return info.div;
+    };
+    info.update = _ => {
+      ReactDOM.render(<Info />, document.getElementById('info'));
+    };
+    info.addTo(map);
+    applyColor()
+  }
+  setupSearch = (map) => {
+    const search = new GeoSearchControl({
+      provider: new OpenStreetMapProvider(),
+      showMarker: false,
+    });
+    map.addControl(search);
+  }
+  setup = (map) => {
+    this.setupLegend(map);
+    this.setupSearch(map);
+  }
+  render() {
+    return (
+      <MapContainer id="map" center={[45.46423, 9.19073]} zoom={19} maxZoom={19} whenCreated={this.setup}>
+        <TileLayer
+          attribution={custom_attribution} url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+         />
+        <MyComponent {...this.props} />
+      </MapContainer>
+    )
+  }
+}
+
+function App() {
+  const [state, setState] = useState(states.LOADED);
+  const [mode, setMode] = useState("lastedit");
+  const [percentile, setPercentile] = useState(50);
+  return (
+    <>
+      <Bar state={state} setState={setState} mode={mode} setMode={setMode} percentile={percentile} setPercentile={setPercentile} />
+      <Map state={state} setState={setState} mode={mode} percentile={percentile} />
+    </>
+  );
+}
+ReactDOM.render(<App />, document.getElementById('root'));
+
+
+/*
+
+let autoopen = false;
+document.getElementById('worstnode').onclick = function () {
+  nodes.addTo(map);
+  autoopen=true;
+  map.on('zoomend', function() {
+   if (autoopen) {
+     window.nodeMarker.openPopup();
+     autoopen=false;
+     }
+  });
+  map.flyTo(window.nodeMarker._latlng, OpenStreetMapLayer.options.maxZoom);
+}
+
 
 function updateHash() {
   let center = map.getCenter();
@@ -465,5 +484,4 @@ if (document.location.hash) {
   map.setView([45.46423, 9.19073], 19); // Duomo di Milano
 }
 
-getData();
 */
