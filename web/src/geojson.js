@@ -1,6 +1,6 @@
 import './map.css';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 
 var classNames = require('classnames');
@@ -8,10 +8,10 @@ var classNames = require('classnames');
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, GeoJSON, useMap, useMapEvents } from 'react-leaflet'
 
-import { MarkerClusterGroup } from "leaflet.markercluster/src";
-import "leaflet.markercluster/dist/MarkerCluster.css";
+import MarkerClusterGroup from 'react-leaflet-markercluster';
+//import "leaflet.markercluster/dist/MarkerCluster.css";
 
 import { GeoSearchControl, OpenStreetMapProvider } from 'leaflet-geosearch';
 import "leaflet-geosearch/dist/geosearch.css";
@@ -162,13 +162,13 @@ function Bar({state, setState, mode, setMode, percentile, setPercentile}) {
 let modes = {
     lastedit: {
         defaultValue: new Date(),
-        getValue: feature => new Date(feature.properties.lastedit),
+        getValue: feature => (new Date(feature.properties.lastedit)).getTime(),
         prettyValue: date => date.toISOString().slice(0, 10),
         inverted: false
     },
     creation: {
         defaultValue: new Date(),
-        getValue: feature => new Date(feature.properties.created),
+        getValue: feature => (new Date(feature.properties.created)).getTime(),
         prettyValue: date => date.toISOString().slice(0, 10),
         inverted: false
     },
@@ -250,19 +250,6 @@ function generatePopup(feature) {
   return popup;
 }
 
-function computeUrl(map) {
-  let bounds = map.getBounds();
-  let west = bounds.getWest();
-  let south = bounds.getSouth();
-  let east = bounds.getEast();
-  let north = bounds.getNorth();
-  let url = `/api/getData?minx=${west}&miny=${south}&maxx=${east}&maxy=${north}`;
-  let filter = document.getElementById('filter').value;
-  if (filter.trim().length > 0) url += `&filter=${filter}`;
-  return url;
-}
-
-
 let colormap = {};
 function parseData(results, mode, percentile) {
   let minimumValue = modes[mode].defaultValue;
@@ -339,28 +326,32 @@ function parseData(results, mode, percentile) {
   return markers;
 }
 
+let percentile = 50;
+function iconCreateFunction(cluster) {
+  var markers = cluster.getAllChildMarkers();
+  let values = markers.map(marker => colormap[marker.options.fillColor]);
+  values.sort(function(a, b) {
+    return a - b;
+  });
+  let aggregated = values[Math.ceil(percentile*values.length/100)-1];
+  let html = document.createElement('div');
+  html.style.backgroundColor = interpolateViridis(aggregated);
+  let content = document.createElement('span');
+  content.innerText = markers.length;
+  html.appendChild(content);
+  return L.divIcon({ html: html, className: "mycluster" });
+};
 
-
+/*
 let nodes = new MarkerClusterGroup({
   percentile: 50,
-  iconCreateFunction: function (cluster) {
-    var markers = cluster.getAllChildMarkers();
-    let values = markers.map(marker => colormap[marker.options.fillColor]);
-    values.sort(function(a, b) {
-      return a - b;
-    });
-    let aggregated = values[Math.ceil(this.percentile*values.length/100)-1];
-    let html = document.createElement('div');
-    html.style.backgroundColor = interpolateViridis(aggregated);
-    let content = document.createElement('span');
-    content.innerText = markers.length;
-    html.appendChild(content);
-    return L.divIcon({ html: html, className: "mycluster" });
-  },
+  iconCreateFunction: iconCreateFunction,
   spiderfyOnMaxZoom: false,
   disableClusteringAtZoom: 19,
 });
+*/
 
+/*
 function MyComponent({state, setState, mode, percentile}) {
   const map = useMap();
   console.log(percentile);
@@ -368,83 +359,142 @@ function MyComponent({state, setState, mode, percentile}) {
   nodes.addTo(map);
   rectangle.addTo(map);
 
-  switch (state) {
-    case states.LOADING:
-      fetch(computeUrl(map))
-        .then(response => response.json())
-        .then(data => {
-          let markers = parseData(data, mode, percentile);
-          rectangle.remove();
-          rectangle = L.rectangle(map.getBounds(), {
-            color: "#ff7800", fill: false, weight: 3
-          });
-          nodes.clearLayers();
-          nodes.addLayers(markers);
-          setState(states.LOADED);
-        })
-        .catch(error => {
-          console.log(error);
-          setState(states.ERROR);
-      });
-      break;
-    case states.LOADED:
-      nodes.options.percentile = percentile;
-      nodes.refreshClusters();
-      break;
+
+}
+*/
+
+function GetBounds({setBounds}) {
+  function updateBounds() {
+    let bounds = map.getBounds();
+    setBounds({
+      west: bounds.getWest(),
+      south: bounds.getSouth(),
+      east: bounds.getEast(),
+      north: bounds.getNorth()
+    });
   }
+  const map = useMapEvents({
+    'load': updateBounds,
+    'resize': updateBounds,
+    'moveend': updateBounds,
+    'zoomend': updateBounds
+  });
   return null;
 }
 
-let custom_attribution = `<a href="https://wiki.openstreetmap.org/wiki/Is_OSM_up-to-date">${document.title}</a> (<a href="https://github.com/frafra/is-osm-uptodate">source code</a> | &copy; <a href="https://ohsome.org/copyrights">OpenStreetMap contributors</a>)`
-class Map extends React.Component {
-  constructor(props) {
-    super(props);
-  }
-  setupLegend = (map) => {
+/*
+setupLegend = (map) => {
     let info = L.control();
-    info.onAdd = map => {
-      info.div = L.DomUtil.create('div');
-      info.div.id = 'info';
-      L.DomEvent.disableClickPropagation(info.div);
-      return info.div;
-    };
-    info.update = _ => {
-      ReactDOM.render(<Info />, document.getElementById('info'));
-    };
-    info.addTo(map);
-    applyColor()
-  }
-  setupSearch = (map) => {
-    const search = new GeoSearchControl({
-      provider: new OpenStreetMapProvider(),
-      showMarker: false,
-    });
-    map.addControl(search);
-  }
-  setup = (map) => {
-    this.setupLegend(map);
-    this.setupSearch(map);
-  }
-  render() {
-    return (
-      <MapContainer id="map" center={[45.46423, 9.19073]} zoom={19} maxZoom={19} whenCreated={this.setup}>
-        <TileLayer
-          attribution={custom_attribution} url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
-         />
-        <MyComponent {...this.props} />
-      </MapContainer>
-    )
-  }
+  info.onAdd = map => {
+    info.div = L.DomUtil.create('div');
+    info.div.id = 'info';
+    L.DomEvent.disableClickPropagation(info.div);
+    return info.div;
+  };
+  info.update = _ => {
+    ReactDOM.render(<Info />, document.getElementById('info'));
+  };
+  info.addTo(map);
+  applyColor()
 }
+*/
+function setupSearch(map) {
+  const search = new GeoSearchControl({
+    provider: new OpenStreetMapProvider(),
+    showMarker: false,
+  });
+  map.addControl(search);
+}
+
+function pointToLayer(geoJsonPoint, latlng) {
+  // https://github.com/PaulLeCam/react-leaflet/issues/234
+  return L.circleMarker(latlng, {
+      radius: 5,
+      fillColor: geoJsonPoint.properties.color,
+      color: "#555",
+      weight: 1,
+      opacity: 1,
+      fillOpacity: 1
+    });
+}
+
+let custom_attribution = `<a href="https://wiki.openstreetmap.org/wiki/Is_OSM_up-to-date">${document.title}</a> (<a href="https://github.com/frafra/is-osm-uptodate">source code</a> | &copy; <a href="https://ohsome.org/copyrights">OpenStreetMap contributors</a>)`
+function Map(props) {
+  if (props.geojson) {
+    let getValue = modes[props.mode].getValue;
+    let values = props.geojson.features.map(feature => getValue(feature));
+    let lowest = Math.min(...values);
+    let highest = Math.max(...values);
+    let inverted = modes[props.mode].inverted;
+    let worst = !inverted ? lowest : highest;
+    let best = !inverted ? highest : lowest;
+    let range = highest-lowest;
+    props.geojson.features.map(feature => {
+      console.log(getValue(feature));
+      feature.properties.color = interpolateViridis(Math.abs(worst-getValue(feature))/range);
+    });
+  }
+  return (
+    <MapContainer id="map" center={[45.46423, 9.19073]} zoom={19} maxZoom={19} whenCreated={setupSearch}>
+      <TileLayer
+        attribution={custom_attribution} url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+       />
+      <GetBounds setBounds={props.setBounds}/>
+      {props.geojson &&
+        <GeoJSON key='my-geojson' data={props.geojson} pointToLayer={pointToLayer.bind(props)} />
+      }
+    </MapContainer>
+  )
+}
+
+/*
+              let markers = parseData(data, mode, percentile);
+              rectangle.remove();
+              rectangle = L.rectangle(map.getBounds(), {
+                color: "#ff7800", fill: false, weight: 3
+              });
+              nodes.clearLayers();
+              nodes.addLayers(markers);
+              setState(states.LOADED);
+*/
 
 function App() {
   const [state, setState] = useState(states.LOADED);
   const [mode, setMode] = useState("lastedit");
   const [percentile, setPercentile] = useState(50);
+  const [bounds, setBounds] = useState({});
+  const [geojson, setGeojson] = useState(null);
+  const [statistics, setStatistics] = useState({});
+
+  useEffect(() => {
+      switch (state) {
+        case states.LOADING:
+          let url = `/api/getData?minx=${bounds.west}&miny=${bounds.south}&maxx=${bounds.east}&maxy=${bounds.north}`;
+          //  let filter = document.getElementById('filter').value;
+          //  if (filter.trim().length > 0) url += `&filter=${filter}`;
+          fetch(url)
+            .then(response => response.json())
+            .then(geojson => {
+              setGeojson(geojson);
+              setState(states.LOADED);
+            })
+            .catch(error => {
+              console.log(error);
+              setState(states.ERROR);
+          });
+          break;
+        case states.LOADED:
+          //nodes.options.percentile = percentile;
+          //nodes.refreshClusters();
+          break;
+      }
+      return null;
+  }, [state]);
+
   return (
     <>
       <Bar state={state} setState={setState} mode={mode} setMode={setMode} percentile={percentile} setPercentile={setPercentile} />
-      <Map state={state} setState={setState} mode={mode} percentile={percentile} />
+      <Map state={state} setState={setState} mode={mode} percentile={percentile} setBounds={setBounds} geojson={geojson} />
     </>
   );
 }
