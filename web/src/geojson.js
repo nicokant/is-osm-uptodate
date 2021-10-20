@@ -1,6 +1,6 @@
 import './map.css';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, createRef } from 'react';
 import ReactDOM from 'react-dom';
 
 var classNames = require('classnames');
@@ -8,7 +8,7 @@ var classNames = require('classnames');
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-import { MapContainer, TileLayer, Marker, Popup, GeoJSON, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, TileLayer, CircleMarker, Popup, useMap, useMapEvents } from 'react-leaflet'
 
 import MarkerClusterGroup from 'react-leaflet-markercluster';
 //import "leaflet.markercluster/dist/MarkerCluster.css";
@@ -234,98 +234,6 @@ function Info(props) {
   );
 }
 
-
-function generatePopup(feature) {
-  let type = feature.geometry.type == 'Point' ? 'node' : 'way';
-  let popup = `
-    <b>Last edit</b>: ${feature.properties.lastedit}<br>
-    <b>Created at</b>: ${feature.properties.created}<br>
-    <b>Current version</b>: ${feature.properties.version}<br>
-    <div style="text-align: center">
-      <a href="https://www.openstreetmap.org/edit?${type}=${feature.properties.id}" target="_blank">Edit <a> |
-      <a href="https://www.openstreetmap.org/${type}/${feature.properties.id}/history" target="_blank">History</a> |
-      <a href="https://www.openstreetmap.org/${type}/${feature.properties.id}" target="_blank">Details<a>
-    </div>
-  `;
-  return popup;
-}
-
-let colormap = {};
-function parseData(results, mode, percentile) {
-  let minimumValue = modes[mode].defaultValue;
-  let maximumValue = modes[mode].defaultValue;
-  let minimumNodeValue = modes[mode].defaultValue;
-  let maximumNodeValue = modes[mode].defaultValue;
-  let minimumNode;
-  let maximumNode;
-  let defaultValue = modes[mode].defaultValue;
-  for (let index in results.features) {
-    let feature = results.features[index];
-    let value = modes[mode].getValue(feature);
-    if (feature.geometry.type == 'Point') {
-      if (value <= minimumNodeValue || minimumNodeValue == defaultValue) {
-        minimumNodeValue = value;
-        minimumNode = feature;
-      }
-      if (value > maximumNodeValue || maximumNodeValue == defaultValue) {
-        maximumNodeValue = value;
-        maximumNode = feature;
-      }
-    }
-    if (value <= minimumValue) {
-      minimumValue = value;
-    }
-    if (value > maximumValue) {
-      maximumValue = value;
-    }
-  }
-  // what if there are no features? TODO
-  let nodePrettyId;
-  if (!modes[mode].inverted) {
-    nodePrettyId = minimumNode.properties.id;
-  } else {
-    nodePrettyId = maximumNode.properties.id;
-  }
-  document.getElementById("worstnode").innerText = nodePrettyId;
-  let range;
-  if (modes[mode].inverted) range = minimumValue-maximumValue;
-  else range = maximumValue-minimumValue;
-  let markers = [];
-  colormap = {}; // reset
-  L.geoJSON(results, {
-    pointToLayer: (feature, latlng) => {
-      let value = modes[mode].getValue(feature);
-      let computed;
-      if (modes[mode].inverted) computed = (value-maximumValue)/range;
-      else computed = (value-minimumValue)/range;
-      let color = interpolateViridis(computed);
-      colormap[color] = computed;
-      let marker = L.circleMarker(latlng, {
-        radius: 5,
-        fillColor: color,
-        color: "#555",
-        weight: 1,
-        opacity: 1,
-        fillOpacity: 1
-      });
-      let popup = generatePopup(feature);
-      marker.bindPopup(popup);
-      if (!modes[mode].inverted) {
-        if (feature.properties.id == minimumNode.properties.id) {
-          window.nodeMarker = marker;
-        }
-      } else {
-        if (feature.properties.id == maximumNode.properties.id) {
-          window.nodeMarker = marker;
-        }
-      }
-      markers.push(marker);
-      return marker;
-    }
-  });
-  return markers;
-}
-
 let percentile = 50;
 function iconCreateFunction(cluster) {
   var markers = cluster.getAllChildMarkers();
@@ -363,21 +271,21 @@ function MyComponent({state, setState, mode, percentile}) {
 }
 */
 
+function updateBounds(map, setBounds) {
+  let bounds = map.getBounds();
+  setBounds({
+    west: bounds.getWest(),
+    south: bounds.getSouth(),
+    east: bounds.getEast(),
+    north: bounds.getNorth()
+  });
+}
+
 function GetBounds({setBounds}) {
-  function updateBounds() {
-    let bounds = map.getBounds();
-    setBounds({
-      west: bounds.getWest(),
-      south: bounds.getSouth(),
-      east: bounds.getEast(),
-      north: bounds.getNorth()
-    });
-  }
   const map = useMapEvents({
-    'load': updateBounds,
-    'resize': updateBounds,
-    'moveend': updateBounds,
-    'zoomend': updateBounds
+    'resize': () => updateBounds(map, setBounds),
+    'moveend': () => updateBounds(map, setBounds),
+    'zoomend': () => updateBounds(map, setBounds)
   });
   return null;
 }
@@ -398,7 +306,7 @@ setupLegend = (map) => {
   applyColor()
 }
 */
-function setupSearch(map) {
+function setup(map) {
   const search = new GeoSearchControl({
     provider: new OpenStreetMapProvider(),
     showMarker: false,
@@ -427,22 +335,54 @@ function Map(props) {
     let highest = Math.max(...values);
     let inverted = modes[props.mode].inverted;
     let worst = !inverted ? lowest : highest;
-    let best = !inverted ? highest : lowest;
+    //let best = !inverted ? highest : lowest;
     let range = highest-lowest;
     props.geojson.features.map(feature => {
-      console.log(getValue(feature));
-      feature.properties.color = interpolateViridis(Math.abs(worst-getValue(feature))/range);
+      let score = Math.abs(worst-getValue(feature))/range;
+      feature.properties.color = interpolateViridis(score);
     });
   }
   return (
-    <MapContainer id="map" center={[45.46423, 9.19073]} zoom={19} maxZoom={19} whenCreated={setupSearch}>
+    <MapContainer
+      id="map"
+      center={[45.46423, 9.19073]}
+      zoom={19}
+      whenCreated={map => {
+        setup(map)
+        // https://github.com/PaulLeCam/react-leaflet/issues/46
+        map.onload = updateBounds(map, props.setBounds);
+      }}>
       <TileLayer
         attribution={custom_attribution} url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+        maxZoom={19}
        />
-      <GetBounds setBounds={props.setBounds}/>
-      {props.geojson &&
-        <GeoJSON key='my-geojson' data={props.geojson} pointToLayer={pointToLayer.bind(props)} />
-      }
+      <GetBounds setBounds={props.setBounds} />
+      <MarkerClusterGroup>
+        {props.geojson && props.geojson.features.map(feature => (
+          <CircleMarker
+            key={feature.properties.id}
+            center={[feature.geometry.coordinates[1], feature.geometry.coordinates[0]]}
+            pathOptions={{
+                fillColor: feature.properties.color,
+                color: "#555",
+                weight: 1,
+                opacity: 1,
+                fillOpacity: 1
+            }}
+            radius={5}>
+            <Popup>
+              <b>Last edit</b>: {feature.properties.lastedit}<br/>
+              <b>Created at</b>: {feature.properties.created}<br/>
+              <b>Current version</b>: {feature.properties.version}<br/>
+              <div className="text-center">
+                <a href="https://www.openstreetmap.org/edit?node={feature.properties.id}" target="_blank">Edit </a> |
+                <a href="https://www.openstreetmap.org/node/{feature.properties.id}/history" target="_blank">History</a> |
+                <a href="https://www.openstreetmap.org/node/{feature.properties.id}" target="_blank">Details</a>
+              </div>
+            </Popup>
+          </CircleMarker>
+        ))}
+      </MarkerClusterGroup>
     </MapContainer>
   )
 }
