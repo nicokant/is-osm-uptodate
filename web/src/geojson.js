@@ -1,6 +1,6 @@
 import './map.css';
 
-import React, { useState, useEffect, createRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 
 var classNames = require('classnames');
@@ -8,10 +8,10 @@ var classNames = require('classnames');
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-import { MapContainer, TileLayer, CircleMarker, Popup, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, TileLayer, CircleMarker, GeoJSON, Popup, useMap, useMapEvents } from 'react-leaflet'
 
 import MarkerClusterGroup from 'react-leaflet-markercluster';
-//import "leaflet.markercluster/dist/MarkerCluster.css";
+import "leaflet.markercluster/dist/MarkerCluster.css";
 
 import { GeoSearchControl, OpenStreetMapProvider } from 'leaflet-geosearch';
 import "leaflet-geosearch/dist/geosearch.css";
@@ -234,8 +234,7 @@ function Info(props) {
   );
 }
 
-let percentile = 50;
-function iconCreateFunction(cluster) {
+function iconCreateFunction(percentile, colormap, cluster) {
   var markers = cluster.getAllChildMarkers();
   let values = markers.map(marker => colormap[marker.options.fillColor]);
   values.sort(function(a, b) {
@@ -249,15 +248,6 @@ function iconCreateFunction(cluster) {
   html.appendChild(content);
   return L.divIcon({ html: html, className: "mycluster" });
 };
-
-/*
-let nodes = new MarkerClusterGroup({
-  percentile: 50,
-  iconCreateFunction: iconCreateFunction,
-  spiderfyOnMaxZoom: false,
-  disableClusteringAtZoom: 19,
-});
-*/
 
 /*
 function MyComponent({state, setState, mode, percentile}) {
@@ -306,13 +296,6 @@ setupLegend = (map) => {
   applyColor()
 }
 */
-function setup(map) {
-  const search = new GeoSearchControl({
-    provider: new OpenStreetMapProvider(),
-    showMarker: false,
-  });
-  map.addControl(search);
-}
 
 function pointToLayer(geoJsonPoint, latlng) {
   // https://github.com/PaulLeCam/react-leaflet/issues/234
@@ -326,22 +309,39 @@ function pointToLayer(geoJsonPoint, latlng) {
     });
 }
 
+function setup(map) {
+  const search = new GeoSearchControl({
+    provider: new OpenStreetMapProvider(),
+    showMarker: false,
+  });
+  map.addControl(search);
+}
+
 let custom_attribution = `<a href="https://wiki.openstreetmap.org/wiki/Is_OSM_up-to-date">${document.title}</a> (<a href="https://github.com/frafra/is-osm-uptodate">source code</a> | &copy; <a href="https://ohsome.org/copyrights">OpenStreetMap contributors</a>)`
 function Map(props) {
-  if (props.geojson) {
-    let getValue = modes[props.mode].getValue;
-    let values = props.geojson.features.map(feature => getValue(feature));
-    let lowest = Math.min(...values);
-    let highest = Math.max(...values);
-    let inverted = modes[props.mode].inverted;
-    let worst = !inverted ? lowest : highest;
-    //let best = !inverted ? highest : lowest;
-    let range = highest-lowest;
-    props.geojson.features.map(feature => {
-      let score = Math.abs(worst-getValue(feature))/range;
-      feature.properties.color = interpolateViridis(score);
-    });
-  }
+  const colormap = useMemo(() => {
+    let colormap = {};
+    if (props.geojson) {
+      let getValue = modes[props.mode].getValue;
+      let values = props.geojson.features.map(feature => getValue(feature));
+      let lowest = Math.min(...values);
+      let highest = Math.max(...values);
+      let inverted = modes[props.mode].inverted;
+      let worst = !inverted ? lowest : highest;
+      //let best = !inverted ? highest : lowest;
+      let range = highest-lowest;
+      props.geojson.features.map(feature => {
+        let score = Math.abs(worst-getValue(feature))/range;
+        let color = interpolateViridis(score);
+        feature.properties.color = color;
+        colormap[color] = score;
+      });
+    }
+    return colormap;
+  }, [props.geojson, props.mode]);
+  const iconCreateFn = useMemo(() => {
+    return iconCreateFunction.bind(null, props.percentile, colormap);
+  }, [props.percentile, colormap]);
   return (
     <MapContainer
       id="map"
@@ -357,31 +357,10 @@ function Map(props) {
         maxZoom={19}
        />
       <GetBounds setBounds={props.setBounds} />
-      <MarkerClusterGroup>
-        {props.geojson && props.geojson.features.map(feature => (
-          <CircleMarker
-            key={feature.properties.id}
-            center={[feature.geometry.coordinates[1], feature.geometry.coordinates[0]]}
-            pathOptions={{
-                fillColor: feature.properties.color,
-                color: "#555",
-                weight: 1,
-                opacity: 1,
-                fillOpacity: 1
-            }}
-            radius={5}>
-            <Popup>
-              <b>Last edit</b>: {feature.properties.lastedit}<br/>
-              <b>Created at</b>: {feature.properties.created}<br/>
-              <b>Current version</b>: {feature.properties.version}<br/>
-              <div className="text-center">
-                <a href="https://www.openstreetmap.org/edit?node={feature.properties.id}" target="_blank">Edit </a> |
-                <a href="https://www.openstreetmap.org/node/{feature.properties.id}/history" target="_blank">History</a> |
-                <a href="https://www.openstreetmap.org/node/{feature.properties.id}" target="_blank">Details</a>
-              </div>
-            </Popup>
-          </CircleMarker>
-        ))}
+      <MarkerClusterGroup iconCreateFunction={iconCreateFn} spiderfyOnMaxZoom={false} disableClusteringAtZoom={19}>
+        {props.geojson &&
+        <GeoJSON data={props.geojson} pointToLayer={pointToLayer} />
+        }
       </MarkerClusterGroup>
     </MapContainer>
   )
