@@ -31,13 +31,13 @@ const states = {
 }
 
 
-function Settings() {
+function Settings({setFilter}) {
   return (
     <div className="input-group">
       <div className="input-group-prepend">
         <div className="input-group-text">Filter</div>
       </div>
-      <input id="filter" className="form-control" type="text" placeholder="example: amenity=*" />
+      <input className="form-control" type="text" placeholder="example: amenity=*" onChange={event => setFilter(event.target.value)} />
     </div>
   )
 }
@@ -140,10 +140,12 @@ function AccordionItem({title, children}) {
   )
 }
 
-function Bar({state, setState, mode, setMode, percentile, setPercentile}) {
+function Bar({state, setState, setFilter, mode, setMode, percentile, setPercentile}) {
   return (
     <div id="bar" className="bg-light accordion">
-      <AccordionItem title="Settings"><Settings /></AccordionItem>
+      <AccordionItem title="Settings">
+        <Settings setFilter={setFilter} />
+      </AccordionItem>
       <AccordionItem title="Actions">
         <Actions state={state} setState={setState} />
       </AccordionItem>
@@ -262,6 +264,12 @@ function MyComponent({state, setState, mode, percentile}) {
 */
 
 function updateBounds(map, setBounds) {
+  let center = map.getCenter();
+  let lat = center.lat.toFixed(5);
+  let lng = center.lng.toFixed(5);
+  let zoom = map.getZoom();
+  document.location.hash = `${zoom}/${lat}/${lng}`;
+
   let bounds = map.getBounds();
   setBounds({
     west: bounds.getWest(),
@@ -297,9 +305,25 @@ setupLegend = (map) => {
 }
 */
 
+function generatePopup(feature) {
+  let position = location.hash.substr(1);
+  let type = feature.geometry.type == 'Point' ? 'node' : 'way';
+  let popup = `
+    <b>Last edit</b>: ${feature.properties.lastedit}<br>
+    <b>Created at</b>: ${feature.properties.created}<br>
+    <b>Current version</b>: ${feature.properties.version}<br>
+    <div style="text-align: center">
+      <a href="https://www.openstreetmap.org/edit?${type}=${feature.properties.id}#map=${position}" target="_blank">Edit <a> |
+      <a href="https://www.openstreetmap.org/${type}/${feature.properties.id}/history" target="_blank">History</a> |
+      <a href="https://www.openstreetmap.org/${type}/${feature.properties.id}" target="_blank">Details<a>
+    </div>
+  `;
+  return popup;
+}
+
 function pointToLayer(geoJsonPoint, latlng) {
   // https://github.com/PaulLeCam/react-leaflet/issues/234
-  return L.circleMarker(latlng, {
+  let circle = L.circleMarker(latlng, {
       radius: 5,
       fillColor: geoJsonPoint.properties.color,
       color: "#555",
@@ -307,6 +331,8 @@ function pointToLayer(geoJsonPoint, latlng) {
       opacity: 1,
       fillOpacity: 1
     });
+  circle.bindPopup(generatePopup(geoJsonPoint));
+  return circle;
 }
 
 function setup(map) {
@@ -319,6 +345,7 @@ function setup(map) {
 
 let custom_attribution = `<a href="https://wiki.openstreetmap.org/wiki/Is_OSM_up-to-date">${document.title}</a> (<a href="https://github.com/frafra/is-osm-uptodate">source code</a> | &copy; <a href="https://ohsome.org/copyrights">OpenStreetMap contributors</a>)`
 function Map(props) {
+  const [zoom, lon, lat] = document.location.hash.substr(1).split('/');
   const colormap = useMemo(() => {
     let colormap = {};
     if (props.geojson) {
@@ -339,14 +366,22 @@ function Map(props) {
     }
     return colormap;
   }, [props.geojson, props.mode]);
+
+  //https://github.com/yuzhva/react-leaflet-markercluster/pull/162
   const iconCreateFn = useMemo(() => {
     return iconCreateFunction.bind(null, props.percentile, colormap);
   }, [props.percentile, colormap]);
+
+  // https://github.com/PaulLeCam/react-leaflet/issues/332
+  const geojson_key = useMemo(() => {
+    return Math.random();
+  }, [props.geojson, props.mode]);
+
   return (
     <MapContainer
       id="map"
-      center={[45.46423, 9.19073]}
-      zoom={19}
+      center={[lon, lat]}
+      zoom={zoom}
       whenCreated={map => {
         setup(map)
         // https://github.com/PaulLeCam/react-leaflet/issues/46
@@ -358,9 +393,7 @@ function Map(props) {
        />
       <GetBounds setBounds={props.setBounds} />
       <MarkerClusterGroup iconCreateFunction={iconCreateFn} spiderfyOnMaxZoom={false} disableClusteringAtZoom={19}>
-        {props.geojson &&
-        <GeoJSON data={props.geojson} pointToLayer={pointToLayer} />
-        }
+        {props.geojson && <GeoJSON key={geojson_key} data={props.geojson} pointToLayer={pointToLayer} /> }
       </MarkerClusterGroup>
     </MapContainer>
   )
@@ -379,9 +412,10 @@ function Map(props) {
 
 function App() {
   const [state, setState] = useState(states.LOADED);
+  const [filter, setFilter] = useState("");
   const [mode, setMode] = useState("lastedit");
   const [percentile, setPercentile] = useState(50);
-  const [bounds, setBounds] = useState({});
+  const [bounds, setBounds] = useState();
   const [geojson, setGeojson] = useState(null);
   const [statistics, setStatistics] = useState({});
 
@@ -389,8 +423,7 @@ function App() {
       switch (state) {
         case states.LOADING:
           let url = `/api/getData?minx=${bounds.west}&miny=${bounds.south}&maxx=${bounds.east}&maxy=${bounds.north}`;
-          //  let filter = document.getElementById('filter').value;
-          //  if (filter.trim().length > 0) url += `&filter=${filter}`;
+          if (filter.trim().length > 0) url += `&filter=${filter}`;
           fetch(url)
             .then(response => response.json())
             .then(geojson => {
@@ -403,8 +436,6 @@ function App() {
           });
           break;
         case states.LOADED:
-          //nodes.options.percentile = percentile;
-          //nodes.refreshClusters();
           break;
       }
       return null;
@@ -412,7 +443,7 @@ function App() {
 
   return (
     <>
-      <Bar state={state} setState={setState} mode={mode} setMode={setMode} percentile={percentile} setPercentile={setPercentile} />
+      <Bar state={state} setState={setState} setFilter={setFilter} mode={mode} setMode={setMode} percentile={percentile} setPercentile={setPercentile} />
       <Map state={state} setState={setState} mode={mode} percentile={percentile} setBounds={setBounds} geojson={geojson} />
     </>
   );
@@ -435,22 +466,5 @@ document.getElementById('worstnode').onclick = function () {
   map.flyTo(window.nodeMarker._latlng, OpenStreetMapLayer.options.maxZoom);
 }
 
-
-function updateHash() {
-  let center = map.getCenter();
-  let lat = center.lat.toFixed(5);
-  let lng = center.lng.toFixed(5);
-  let zoom = map.getZoom();
-  document.location.hash = `${zoom}/${lat}/${lng}`;
-};
-map.on('zoomend', updateHash);
-map.on('moveend', updateHash);
-
-if (document.location.hash) {
-  let location = document.location.hash.substr(1).split('/');
-  map.setView([location[1], location[2]], location[0])
-} else {
-  map.setView([45.46423, 9.19073], 19); // Duomo di Milano
-}
 
 */
