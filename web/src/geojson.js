@@ -1,6 +1,6 @@
 import './map.css';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom';
 
 var classNames = require('classnames');
@@ -163,15 +163,15 @@ function Bar({state, setState, setFilter, mode, setMode, percentile, setPercenti
 
 let modes = {
     lastedit: {
-        defaultValue: new Date(),
+        defaultValue: (new Date()).getTime(),
         getValue: feature => (new Date(feature.properties.lastedit)).getTime(),
-        prettyValue: date => date.toISOString().slice(0, 10),
+        prettyValue: date => (new Date(date)).toISOString().slice(0, 10),
         inverted: false
     },
     creation: {
-        defaultValue: new Date(),
+        defaultValue: (new Date()).getTime(),
         getValue: feature => (new Date(feature.properties.created)).getTime(),
-        prettyValue: date => date.toISOString().slice(0, 10),
+        prettyValue: date => (new Date(date)).toISOString().slice(0, 10),
         inverted: false
     },
     revisions: {
@@ -207,33 +207,6 @@ function applyColor() {
 function setColor(event) {
   colour = event.target.value;
   applyColor();
-}
-
-function Info(props) {
-  let minimumValue = modes[mode].defaultValue;
-  let maximumValue = modes[mode].defaultValue;
-  let minimumValuePretty;
-  let maximumValuePretty;
-  if (!modes[mode].inverted) {
-    minimumValuePretty = modes[mode].prettyValue(minimumValue);
-    maximumValuePretty = modes[mode].prettyValue(maximumValue);
-  } else {
-    minimumValuePretty = modes[mode].prettyValue(maximumValue);
-    maximumValuePretty = modes[mode].prettyValue(minimumValue);
-  }
-  return (
-    <>
-    <div className="bar">
-      <span>{minimumValuePretty}</span>
-      <span className="colors"></span>
-      <span>{maximumValuePretty}</span>
-    </div>
-    <div className="slider">
-      Background colour
-      <input type="range" id="grayscale" defaultValue="0" onChange={setColor}/>
-    </div>
-    </>
-  );
 }
 
 function iconCreateFunction(percentile, colormap, cluster) {
@@ -288,23 +261,6 @@ function GetBounds({setBounds}) {
   return null;
 }
 
-/*
-setupLegend = (map) => {
-    let info = L.control();
-  info.onAdd = map => {
-    info.div = L.DomUtil.create('div');
-    info.div.id = 'info';
-    L.DomEvent.disableClickPropagation(info.div);
-    return info.div;
-  };
-  info.update = _ => {
-    ReactDOM.render(<Info />, document.getElementById('info'));
-  };
-  info.addTo(map);
-  applyColor()
-}
-*/
-
 function generatePopup(feature) {
   let position = location.hash.substr(1);
   let type = feature.geometry.type == 'Point' ? 'node' : 'way';
@@ -341,21 +297,24 @@ function setup(map) {
     showMarker: false,
   });
   map.addControl(search);
+  applyColor();
 }
 
 let custom_attribution = `<a href="https://wiki.openstreetmap.org/wiki/Is_OSM_up-to-date">${document.title}</a> (<a href="https://github.com/frafra/is-osm-uptodate">source code</a> | &copy; <a href="https://ohsome.org/copyrights">OpenStreetMap contributors</a>)`
 function Map(props) {
   const [zoom, lon, lat] = document.location.hash.substr(1).split('/');
-  const colormap = useMemo(() => {
+  const [colormap, worstPretty, bestPretty] = useMemo(() => {
     let colormap = {};
+    let worst = modes[props.mode].defaultValue;
+    let best = modes[props.mode].defaultValue;
     if (props.geojson) {
       let getValue = modes[props.mode].getValue;
       let values = props.geojson.features.map(feature => getValue(feature));
       let lowest = Math.min(...values);
       let highest = Math.max(...values);
       let inverted = modes[props.mode].inverted;
-      let worst = !inverted ? lowest : highest;
-      //let best = !inverted ? highest : lowest;
+      worst = !inverted ? lowest : highest;
+      best = !inverted ? highest : lowest;
       let range = highest-lowest;
       props.geojson.features.map(feature => {
         let score = Math.abs(worst-getValue(feature))/range;
@@ -364,7 +323,9 @@ function Map(props) {
         colormap[color] = score;
       });
     }
-    return colormap;
+    let worstPretty = modes[props.mode].prettyValue(worst);
+    let bestPretty = modes[props.mode].prettyValue(best);
+    return [colormap, worstPretty, bestPretty];
   }, [props.geojson, props.mode]);
 
   //https://github.com/yuzhva/react-leaflet-markercluster/pull/162
@@ -376,6 +337,11 @@ function Map(props) {
   const geojson_key = useMemo(() => {
     return Math.random();
   }, [props.geojson, props.mode]);
+
+  const divRef = useRef(null);
+  useEffect(() => {
+    if (divRef.current) L.DomEvent.disableClickPropagation(divRef.current);
+  });
 
   return (
     <MapContainer
@@ -395,6 +361,19 @@ function Map(props) {
       <MarkerClusterGroup iconCreateFunction={iconCreateFn} spiderfyOnMaxZoom={false} disableClusteringAtZoom={19}>
         {props.geojson && <GeoJSON key={geojson_key} data={props.geojson} pointToLayer={pointToLayer} /> }
       </MarkerClusterGroup>
+      <div className="leaflet-top leaflet-right" ref={divRef}>
+        <div className="leaflet-control leaflet-bar" id="info">
+          <div className="bar">
+            <span>{worstPretty}</span>
+            <span className="colors"></span>
+            <span>{bestPretty}</span>
+          </div>
+          <div className="slider">
+            Background colour
+            <input type="range" id="grayscale" defaultValue="0" onChange={setColor}/>
+          </div>
+        </div>
+      </div>
     </MapContainer>
   )
 }
