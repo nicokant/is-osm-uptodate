@@ -3,7 +3,7 @@
 }
 
 #info {
-  padding: .3em .5em;
+  padding: 0.3em 0.5em;
   background: white;
   box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
   border-radius: 5px;
@@ -21,7 +21,7 @@
 .colors {
   flex-grow: 1;
   height: 1em;
-  margin: auto .5em;
+  margin: auto 0.5em;
   background: linear-gradient(to right, #440154, #21918c, #fde725);
 }
 

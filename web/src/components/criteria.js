@@ -1,19 +1,26 @@
 import React from 'react';
-var classNames = require('classnames');
 
-function ButtonCheckbox({id, children, mode, setMode}) {
-  let checked = id == mode;
+function ButtonCheckbox({ id, children, mode, setMode }) {
+  const checked = id === mode;
   return (
     <>
-      <input type="radio" className="btn-check" name="modes" id={id} autoComplete="off" checked={checked} onChange={(e) => setMode(e.target.id) } />
+      <input
+        type="radio"
+        className="btn-check"
+        name="modes"
+        id={id}
+        autoComplete="off"
+        checked={checked}
+        onChange={(e) => setMode(e.target.id)}
+      />
       <label className="btn btn-outline-primary" htmlFor={id}>
         {children}
       </label>
     </>
-  )
+  );
 }
 
-function Mode({mode, setMode}) {
+function Mode({ mode, setMode }) {
   return (
     <div id="mode" className="btn-group-vertical btn-group-toggle" role="group">
       <ButtonCheckbox id="creation" mode={mode} setMode={setMode}>
@@ -29,38 +36,42 @@ function Mode({mode, setMode}) {
         <i className="fas fa-stopwatch" /> Update frequency
       </ButtonCheckbox>
     </div>
-  )
+  );
 }
 
-function Percentile({percentile, setPercentile}) {
+function Percentile({ percentile, setPercentile }) {
   return (
     <>
       <div className="input-group pt-3">
         <span className="input-group-text">Show the</span>
-        <input type="number" className="form-control" min="1" max="100" step="1" value={percentile} onChange={(e) => {setPercentile(e.target.value)} } />
+        <input
+          type="number"
+          className="form-control"
+          min="1"
+          max="100"
+          step="1"
+          value={percentile}
+          onChange={(e) => {
+            setPercentile(e.target.value);
+          }}
+        />
         <span className="input-group-text">percentile</span>
       </div>
       <p className="form-text">
-        When grouping nodes, leave out the lowest {percentile}&nbsp;% and show the node after.
+        When grouping nodes, leave out the lowest {percentile}&nbsp;% and show
+        the node after.
       </p>
     </>
-  )
-}function Save({downloadLink}) {
-  return (
-    <a id="download" className={classNames('btn', 'btn-primary', {'disabled': !downloadLink})} role="button" href={downloadLink}>
-      <i className="fas fa-arrow-alt-circle-down"></i>
-      <span>Download</span>
-    </a>
-  )
+  );
 }
 
-function Criteria({mode, setMode, percentile, setPercentile}) {
+function Criteria({ mode, setMode, percentile, setPercentile }) {
   return (
     <>
       <Mode mode={mode} setMode={setMode} />
       <Percentile percentile={percentile} setPercentile={setPercentile} />
     </>
-  )
+  );
 }
 
 export default Criteria;

@@ -1,10 +1,10 @@
 const path = require('path');
 
 module.exports = {
-  entry: './src/geojson.js',
+  entry: './src/main.js',
   output: {
-    filename: 'geojson.js',
-    path: path.resolve(__dirname, 'dist')
+    filename: 'main.js',
+    path: path.resolve(__dirname, 'dist'),
   },
   devServer: {
     static: path.resolve(__dirname, 'dist'),
@@ -12,8 +12,8 @@ module.exports = {
       '/api': {
         target: 'http://localhost:5000',
         secure: false,
-      }
-    }
+      },
+    },
   },
   module: {
     rules: [
@@ -25,12 +25,12 @@ module.exports = {
         test: /\.?js$/,
         exclude: /node_modules/,
         use: {
-          loader: "babel-loader",
+          loader: 'babel-loader',
           options: {
-            presets: ['@babel/preset-env', '@babel/preset-react']
-          }
-        }
-      }
+            presets: ['@babel/preset-env', '@babel/preset-react'],
+          },
+        },
+      },
     ],
   },
 };
