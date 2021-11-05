@@ -8,7 +8,7 @@ var classNames = require('classnames');
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-import { MapContainer, TileLayer, CircleMarker, GeoJSON, Popup, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, TileLayer, CircleMarker, GeoJSON, Popup, Rectangle, useMap, useMapEvents } from 'react-leaflet';
 
 import MarkerClusterGroup from 'react-leaflet-markercluster';
 import "leaflet.markercluster/dist/MarkerCluster.css";
@@ -100,22 +100,33 @@ function Percentile({percentile, setPercentile}) {
   )
 }
 
-function Statistics() {
+function flyAndOpen(marker, event) {
+  console.log(marker);
+  //map.flyTo(marker._latlng, 19);
+}
+
+function Statistics({statistics}) {
   return (
     <table className="table table-striped">
       <tbody>
-        <tr>
-          <th scope="row">Worst node</th>
-          <td><button className="btn btn-link p-0" id="worstnode"></button></td>
-        </tr>
+        {Object.keys(statistics).map(key =>
+        <tr key={key}>
+          <th scope="row">{ statistics[key].label }</th>
+          <td>
+            <button className="btn btn-link p-0" onClick={flyAndOpen.bind(null, statistics[key].marker)}>
+              { statistics[key].value }
+            </button>
+          </td>
+        </tr>)
+        }
       </tbody>
     </table>
   )
 }
 
-function Save() {
+function Save({downloadLink}) {
   return (
-    <a id="download" className="btn btn-primary disabled" role="button">
+    <a id="download" className={classNames('btn', 'btn-primary', {'disabled': !downloadLink})} role="button" href={downloadLink}>
       <i className="fas fa-arrow-alt-circle-down"></i>
       <span>Download</span>
     </a>
@@ -140,7 +151,7 @@ function AccordionItem({title, children}) {
   )
 }
 
-function Bar({state, setState, setFilter, mode, setMode, percentile, setPercentile}) {
+function Bar({state, setState, setFilter, mode, setMode, percentile, setPercentile, statistics, downloadLink}) {
   return (
     <div id="bar" className="bg-light accordion">
       <AccordionItem title="Settings">
@@ -153,9 +164,11 @@ function Bar({state, setState, setFilter, mode, setMode, percentile, setPercenti
         <Mode mode={mode} setMode={setMode} />
         <Percentile percentile={percentile} setPercentile={setPercentile} />
       </AccordionItem>
-      <AccordionItem title="Statistics"><Statistics /></AccordionItem>
+      <AccordionItem title="Statistics">
+        <Statistics statistics={statistics} />
+      </AccordionItem>
       <AccordionItem title="Save">
-        <Save state={state} />
+        <Save downloadLink={downloadLink} />
       </AccordionItem>
     </div>
   )
@@ -224,18 +237,6 @@ function iconCreateFunction(percentile, colormap, cluster) {
   return L.divIcon({ html: html, className: "mycluster" });
 };
 
-/*
-function MyComponent({state, setState, mode, percentile}) {
-  const map = useMap();
-  console.log(percentile);
-  let rectangle = L.layerGroup();
-  nodes.addTo(map);
-  rectangle.addTo(map);
-
-
-}
-*/
-
 function updateBounds(map, setBounds) {
   let center = map.getCenter();
   let lat = center.lat.toFixed(5);
@@ -243,13 +244,7 @@ function updateBounds(map, setBounds) {
   let zoom = map.getZoom();
   document.location.hash = `${zoom}/${lat}/${lng}`;
 
-  let bounds = map.getBounds();
-  setBounds({
-    west: bounds.getWest(),
-    south: bounds.getSouth(),
-    east: bounds.getEast(),
-    north: bounds.getNorth()
-  });
+  setBounds(map.getBounds());
 }
 
 function GetBounds({setBounds}) {
@@ -287,6 +282,7 @@ function pointToLayer(geoJsonPoint, latlng) {
       opacity: 1,
       fillOpacity: 1
     });
+  circle.osmid = geoJsonPoint.properties.id;
   circle.bindPopup(generatePopup(geoJsonPoint));
   return circle;
 }
@@ -300,9 +296,34 @@ function setup(map) {
   applyColor();
 }
 
+function CustomControl({worstPretty, bestPretty, setColor}) {
+  const divRef = useRef(null);
+  useEffect(() => {
+    if (divRef.current) L.DomEvent.disableClickPropagation(divRef.current);
+  });
+
+  return (
+    <div className="leaflet-top leaflet-right" ref={divRef}>
+      <div className="leaflet-control leaflet-bar" id="info">
+        <div className="bar">
+          <span>{worstPretty}</span>
+          <span className="colors"></span>
+          <span>{bestPretty}</span>
+        </div>
+        <div className="slider">
+          Background colour
+          <input type="range" id="grayscale" defaultValue="0" onChange={setColor} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 let custom_attribution = `<a href="https://wiki.openstreetmap.org/wiki/Is_OSM_up-to-date">${document.title}</a> (<a href="https://github.com/frafra/is-osm-uptodate">source code</a> | &copy; <a href="https://ohsome.org/copyrights">OpenStreetMap contributors</a>)`
 function Map(props) {
-  const [zoom, lon, lat] = document.location.hash.substr(1).split('/');
+  let [zoom, lon, lat] = document.location.hash.substr(1).split('/');
+  if (!(zoom && lon && lat)) [zoom, lon, lat] = [19, 45.46423, 9.19073];
+  const geojsonRef = useRef(null);
   const [colormap, worstPretty, bestPretty] = useMemo(() => {
     let colormap = {};
     let worst = modes[props.mode].defaultValue;
@@ -322,11 +343,24 @@ function Map(props) {
         feature.properties.color = color;
         colormap[color] = score;
       });
+      if (geojsonRef.current) {
+        let stats = {
+          worstNode: {
+              label: "Worst node",
+              value: worst,
+              osmid: props.geojson.features[values.indexOf(worst)].properties.id
+          }
+        };
+        Object.keys(stats).map(key => {
+          stats[key].marker = Object.values(geojsonRef.current._layers).find(layer => layer.osmid == stats[key].osmid)
+        });
+        props.setStatistics(stats);
+      }
     }
     let worstPretty = modes[props.mode].prettyValue(worst);
     let bestPretty = modes[props.mode].prettyValue(best);
     return [colormap, worstPretty, bestPretty];
-  }, [props.geojson, props.mode]);
+  }, [props.geojson, props.mode, geojsonRef.current]);
 
   //https://github.com/yuzhva/react-leaflet-markercluster/pull/162
   const iconCreateFn = useMemo(() => {
@@ -337,11 +371,6 @@ function Map(props) {
   const geojson_key = useMemo(() => {
     return Math.random();
   }, [props.geojson, props.mode]);
-
-  const divRef = useRef(null);
-  useEffect(() => {
-    if (divRef.current) L.DomEvent.disableClickPropagation(divRef.current);
-  });
 
   return (
     <MapContainer
@@ -358,36 +387,14 @@ function Map(props) {
         maxZoom={19}
        />
       <GetBounds setBounds={props.setBounds} />
+      { props.boundsLoaded && <Rectangle pathOptions={{color: "#ff7800", fill: false, weight: 3}} bounds={props.boundsLoaded} />}
       <MarkerClusterGroup iconCreateFunction={iconCreateFn} spiderfyOnMaxZoom={false} disableClusteringAtZoom={19}>
-        {props.geojson && <GeoJSON key={geojson_key} data={props.geojson} pointToLayer={pointToLayer} /> }
+        {props.geojson && <GeoJSON key={geojson_key} ref={geojsonRef} data={props.geojson} pointToLayer={pointToLayer} /> }
       </MarkerClusterGroup>
-      <div className="leaflet-top leaflet-right" ref={divRef}>
-        <div className="leaflet-control leaflet-bar" id="info">
-          <div className="bar">
-            <span>{worstPretty}</span>
-            <span className="colors"></span>
-            <span>{bestPretty}</span>
-          </div>
-          <div className="slider">
-            Background colour
-            <input type="range" id="grayscale" defaultValue="0" onChange={setColor}/>
-          </div>
-        </div>
-      </div>
+      <CustomControl worstPretty={worstPretty} bestPretty={bestPretty} setColor={setColor} />
     </MapContainer>
   )
 }
-
-/*
-              let markers = parseData(data, mode, percentile);
-              rectangle.remove();
-              rectangle = L.rectangle(map.getBounds(), {
-                color: "#ff7800", fill: false, weight: 3
-              });
-              nodes.clearLayers();
-              nodes.addLayers(markers);
-              setState(states.LOADED);
-*/
 
 function App() {
   const [state, setState] = useState(states.LOADED);
@@ -395,26 +402,31 @@ function App() {
   const [mode, setMode] = useState("lastedit");
   const [percentile, setPercentile] = useState(50);
   const [bounds, setBounds] = useState();
+  const [boundsLoaded, setBoundsLoaded] = useState();
   const [geojson, setGeojson] = useState(null);
   const [statistics, setStatistics] = useState({});
+  const [downloadLink, setDownloadLink] = useState();
 
   useEffect(() => {
       switch (state) {
         case states.LOADING:
-          let url = `/api/getData?minx=${bounds.west}&miny=${bounds.south}&maxx=${bounds.east}&maxy=${bounds.north}`;
+          let url = `/api/getData?minx=${bounds.getWest()}&miny=${bounds.getSouth()}&maxx=${bounds.getEast()}&maxy=${bounds.getNorth()}`;
           if (filter.trim().length > 0) url += `&filter=${filter}`;
           fetch(url)
             .then(response => response.json())
             .then(geojson => {
               setGeojson(geojson);
+              setDownloadLink(url);
               setState(states.LOADED);
             })
             .catch(error => {
               console.log(error);
+              setDownloadLink(null);
               setState(states.ERROR);
           });
           break;
         case states.LOADED:
+          setBoundsLoaded(bounds);
           break;
       }
       return null;
@@ -422,8 +434,8 @@ function App() {
 
   return (
     <>
-      <Bar state={state} setState={setState} setFilter={setFilter} mode={mode} setMode={setMode} percentile={percentile} setPercentile={setPercentile} />
-      <Map state={state} setState={setState} mode={mode} percentile={percentile} setBounds={setBounds} geojson={geojson} />
+      <Bar state={state} setState={setState} setFilter={setFilter} mode={mode} setMode={setMode} percentile={percentile} setPercentile={setPercentile} statistics={statistics} downloadLink={downloadLink} />
+      <Map state={state} setState={setState} mode={mode} percentile={percentile} setBounds={setBounds} boundsLoaded={boundsLoaded} geojson={geojson} setStatistics={setStatistics} />
     </>
   );
 }
@@ -434,7 +446,6 @@ ReactDOM.render(<App />, document.getElementById('root'));
 
 let autoopen = false;
 document.getElementById('worstnode').onclick = function () {
-  nodes.addTo(map);
   autoopen=true;
   map.on('zoomend', function() {
    if (autoopen) {
@@ -444,6 +455,4 @@ document.getElementById('worstnode').onclick = function () {
   });
   map.flyTo(window.nodeMarker._latlng, OpenStreetMapLayer.options.maxZoom);
 }
-
-
 */
