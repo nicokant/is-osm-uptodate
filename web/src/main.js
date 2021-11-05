@@ -9,7 +9,7 @@ import Map from './map';
 import './main.css';
 
 function App() {
-  const [state, setState] = useState(states.LOADED);
+  const [state, setState] = useState();
   const [filter, setFilter] = useState('');
   const [mode, setMode] = useState('lastedit');
   const [percentile, setPercentile] = useState(50);
@@ -40,12 +40,18 @@ function App() {
       case states.LOADED:
         break;
       case states.ERROR:
-      default:
         setBoundsLoaded();
         setDownloadLink(null);
+        break;
+      default:
+        break;
     }
     return null;
   }, [state]);
+
+  useEffect(() => {
+    if (!state && bounds) setState(states.LOADING);
+  }, [bounds]);
 
   return (
     <>
